@@ -5,13 +5,13 @@ pkg install wget -y
 pkg install pv
 ```
 ```
-wget -O cf.sh "https://raw.githubusercontent.com/james986g/git/refs/heads/main/CF.sh"
+wget -O psh "https://raw.githubusercontent.com/james986g/git/refs/heads/main/CF.sh"
 ```
 ```
-chmod +x cf.sh
+chmod +x psh
 ```
 ```
-./cf.sh
+./psh
 ```
 开始使用
 ./cf.sh 例如 192.168.1.0/24 或 18.160.0.0/15）：192.168.1.0/24
