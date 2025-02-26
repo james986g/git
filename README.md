@@ -1,4 +1,8 @@
 ```
+pkg install pv
+
+```
+```
 wget -O cf.sh "https://raw.githubusercontent.com/james986g/git/refs/heads/main/CF.sh"
 ```
 ```
@@ -28,4 +32,11 @@ chmod +x cf.sh
 ```
 ./cf.sh -a 192.168.1.0/24
 ```
+运行脚本后，它会扫描指定的网络段并 ping 每个 IP 地址。
+所有在线的 IP 地址都会被写入到 online_ips.txt 文件。
+运行结束后，你可以查看文件 online_ips.txt，里面会列出所有在线的 IP 地址。
+
+output_file="online_ips.txt"：定义保存在线 IP 地址的文件。
+```> $output_file```：清空文件内容，以免每次运行时附加旧的在线 IP 地址。
+echo "$target" >> $output_file：如果某个 IP 地址在线，就将其添加到 online_ips.txt 文件中。
 
