@@ -1,31 +1,8 @@
 #!/bin/bash
 
-# 捕获 Ctrl+C (SIGINT) 信号
-trap 'echo "程序已中断"; exit' SIGINT
-
-# 解析命令行参数
-show_online_only=false
-
-while getopts "a" opt; do
-    case $opt in
-        a)
-            show_online_only=true
-            ;;
-        *)
-            echo "用法: ./cf.sh [-a] <IP段>"
-            exit 1
-            ;;
-    esac
-done
-
 # 提示用户输入网络段（例如 192.168.1.0/24 或 18.160.0.0/15）
-shift $((OPTIND - 1)) # 移动位置参数
-if [ -z "$1" ]; then
-    echo "请输入需要扫描的网络段（例如 192.168.1.0/24 或 18.160.0.0/15）："
-    read ip_range
-else
-    ip_range=$1
-fi
+echo "请输入需要扫描的网络段（例如 192.168.1.0/24 或 18.160.0.0/15）："
+read ip_range
 
 # 提取网络地址和子网掩码
 IFS='/' read -r network mask <<< "$ip_range"
@@ -76,24 +53,33 @@ function calculate_ip_range {
 }
 
 # 通过掩码计算范围
-range=$(calculate_ip_range $mask $i1 $i2 $i3 $i4)
-start_ip=$(echo $range | cut -d ' ' -f1)
-end_ip=$(echo $range | cut -d ' ' -f2)
+start_ip, end_ip = calculate_ip_range $mask
+
+# 创建文件存储在线IP地址
+output_file="online_ips.txt"
+> $output_file # 清空文件内容
+
+# 计算总IP数
+total_ips=$((end_ip - start_ip + 1))
+
+# 显示进度条
+echo "开始扫描，进度如下："
 
 # 循环对所有IP段逐一ping
 for ip in $(seq $start_ip $end_ip); do
     target="$i1.$i2.$i3.$ip"
-    echo "正在ping $target"
+    echo -n "." # 在每次ping后输出一个点（表示进度）
     ping -c 1 -w 1 $target > /dev/null
     if [[ $? -eq 0 ]]; then
-        # 如果是-a选项，只有在线IP才会显示
-        if $show_online_only; then
-            echo "$target is online"
-        else
-            echo "$target is online"
-        fi
-    elif ! $show_online_only; then
-        # 如果没有 -a 选项，显示 offline 的信息
+        echo "$target is online"
+        echo "$target" >> $output_file  # 将在线IP地址写入文件
+    else
         echo "$target is offline"
     fi
+
+    # 更新进度条
+    echo -n "." | pv -n -s $total_ips > /dev/null
 done
+
+# 输出在线IP列表
+echo -e "\n在线的IP地址已经保存到 $output_file 文件中。"
