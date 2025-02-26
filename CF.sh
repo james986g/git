@@ -78,6 +78,7 @@ fi
 echo "开始扫描，进度如下："
 
 # 循环对所有IP段逐一ping
+online_count=0
 for ip in $(seq $start_ip $end_ip); do
     target="$i1.$i2.$i3.$ip"
     
@@ -90,6 +91,7 @@ for ip in $(seq $start_ip $end_ip); do
         # 如果 -a 参数被传入，且只显示在线的 IP
         if $only_online; then
             echo "$target" >> $output_file  # 将在线IP地址写入文件
+            online_count=$((online_count + 1))
         fi
     else
         echo "$target is offline"
@@ -99,9 +101,10 @@ for ip in $(seq $start_ip $end_ip); do
     echo -n "." | pv -n -s $total_ips > /dev/null
 done
 
-# 输出在线IP列表
+# 输出在线IP列表和统计
 if $only_online; then
-    echo -e "\n在线的IP地址已经保存到 $output_file 文件中。"
+    echo -e "\n扫描完成，共有 $online_count 个在线 IP 地址。"
+    echo "在线的IP地址已经保存到 $output_file 文件中。"
 else
     echo -e "\n扫描完成。"
 fi
