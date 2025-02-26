@@ -1,6 +1,9 @@
 ```
 wget -O cf.sh "https://raw.githubusercontent.com/james986g/git/refs/heads/main/CF.sh
 ```
+chmod +x cf.sh
+./cf.sh
+```
 扫CF的脚本
 运行目录下创建一个cfip.txt定义扫描范围
 每行定义一个网段，例如1.0.0.0/24 0.0.0.0/0则全网扫描
