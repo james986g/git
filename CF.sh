@@ -21,39 +21,36 @@ function calculate_ip_range {
     # 将掩码转换为网络前缀长度（32 - 子网掩码）
     local subnet_bits=$((32 - mask))
 
-    # 计算IP范围
-    local start_ip=1
-    local end_ip=254
-    
-    # 对不同子网掩码进行不同的处理
+    # 根据子网掩码调整 IP 范围
     case $subnet_bits in
         8)
-            end_ip=255
             start_ip=1
-            ;;
-        16)
-            end_ip=255
-            start_ip=1
-            ;;
-        24)
-            end_ip=254
-            start_ip=1
+            end_ip=16777214
             ;;
         15)
-            end_ip=254
             start_ip=1
+            end_ip=32766
+            ;;
+        16)
+            start_ip=1
+            end_ip=65534
+            ;;
+        24)
+            start_ip=1
+            end_ip=254
             ;;
         21)
-            end_ip=254
             start_ip=255
+            end_ip=2047
             ;;
         *)
-            end_ip=254
             start_ip=1
+            end_ip=254
     esac
 
     echo $start_ip $end_ip
 }
+
 
 # 通过掩码计算范围
 read start_ip end_ip <<< $(calculate_ip_range $mask)
