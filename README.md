@@ -1,26 +1,24 @@
 ```
 wget -O cf.sh "https://raw.githubusercontent.com/james986g/git/refs/heads/main/CF.sh
 ```
+```
 chmod +x cf.sh
 ./cf.sh
 ```
-扫CF的脚本
-运行目录下创建一个cfip.txt定义扫描范围
-每行定义一个网段，例如1.0.0.0/24 0.0.0.0/0则全网扫描
-扫描结果：查看log.txt
-本次测速结果：查看speedlog.txt
-历史测速结果：查看hspeedlog.txt
+开始使用
+./cf.sh 例如 192.168.1.0/24 或 18.160.0.0/15）：192.168.1.0/24
+# 查看结果：脚本会对该网络段内的每个IP进行ping操作，输出类似以下的内容：
+正在ping 192.168.1.1
+192.168.1.1 is online
+正在ping 192.168.1.2
+192.168.1.2 is offline
+正在ping 192.168.1.3
+192.168.1.3 is online
+...
+注意事项：
 
-支持输入参数:
-```
- -n <num>表示并发任务数量，默认100。路由运行如果内存不足挂死，可适当调小。手机termux下建议400。 
- -k 表示跳过扫描，仅测速。
- -s 表示跳过测速，仅扫描。
- -m <mode>表示扫描模式，0表示https，1表示http
- -c 表示清除断点文件从头扫描，不会清除log.txt、speedlog.txt和hspeedlog.txt文件
- -a <asn>表示以ASN作为扫描范围，例如AS54994则输入-a 54994
- -r 当ftp服务器或worker备份服务器参数已配置时，携带-r参数从服务器上最近一次备份恢复运行环境（断点、log等），当worker和ftp都配置时，从worker恢复。
- -e 表示仅结束脚本时通过ftp或worker备份环境，中途不备份
- -i 表示断点模式测速，保留speedlog.txt并跳过其中已有测速记录的IP
-```
+    这个脚本仅依赖于本地 ping 命令，因此确保你的终端环境中有安装 ping 命令。
+    如果扫描的IP段过大，执行时间可能会比较长。你可以使用不同的 -c 参数控制每次ping的数量（例如，-c 3 表示每个IP ping三次）。
+    网络段内的每个IP都可能会被防火墙或其他安全策略阻止ping请求，因此即使IP处于活动状态，ping 可能也会失败。
+
 
