@@ -3,9 +3,29 @@
 # 捕获 Ctrl+C (SIGINT) 信号
 trap 'echo "程序已中断"; exit' SIGINT
 
+# 解析命令行参数
+show_online_only=false
+
+while getopts "a" opt; do
+    case $opt in
+        a)
+            show_online_only=true
+            ;;
+        *)
+            echo "用法: ./cf.sh [-a] <IP段>"
+            exit 1
+            ;;
+    esac
+done
+
 # 提示用户输入网络段（例如 192.168.1.0/24 或 18.160.0.0/15）
-echo "请输入需要扫描的网络段（例如 192.168.1.0/24 或 18.160.0.0/15）："
-read ip_range
+shift $((OPTIND - 1)) # 移动位置参数
+if [ -z "$1" ]; then
+    echo "请输入需要扫描的网络段（例如 192.168.1.0/24 或 18.160.0.0/15）："
+    read ip_range
+else
+    ip_range=$1
+fi
 
 # 提取网络地址和子网掩码
 IFS='/' read -r network mask <<< "$ip_range"
@@ -66,8 +86,14 @@ for ip in $(seq $start_ip $end_ip); do
     echo "正在ping $target"
     ping -c 1 -w 1 $target > /dev/null
     if [[ $? -eq 0 ]]; then
-        echo "$target is online"
-    else
+        # 如果是-a选项，只有在线IP才会显示
+        if $show_online_only; then
+            echo "$target is online"
+        else
+            echo "$target is online"
+        fi
+    elif ! $show_online_only; then
+        # 如果没有 -a 选项，显示 offline 的信息
         echo "$target is offline"
     fi
 done
