@@ -4,6 +4,23 @@
 echo "请输入需要扫描的网络段（例如 192.168.1.0/24 或 18.160.0.0/15）："
 read ip_range
 
+# 提示用户是否只想ping单个IP
+echo "是否只ping单个IP? (yes/no)"
+read single_ping
+
+# 如果是单独ping一个IP，直接退出子网计算
+if [[ $single_ping == "yes" ]]; then
+    echo "请输入需要ping的IP："
+    read target_ip
+    ping -c 1 -w 1 $target_ip > /dev/null
+    if [[ $? -eq 0 ]]; then
+        echo "$target_ip is online"
+    else
+        echo "$target_ip is offline"
+    fi
+    exit 0
+fi
+
 # 提取网络地址和子网掩码
 IFS='/' read -r network mask <<< "$ip_range"
 
@@ -53,10 +70,10 @@ function calculate_ip_range {
 }
 
 # 通过掩码计算范围
-start_ip, end_ip = calculate_ip_range $mask
+start_ip, end_ip=$(calculate_ip_range $mask $i1 $i2 $i3 $i4)
 
 # 循环对所有IP段逐一ping
-for ip in $(seq start_ip end_ip); do
+for ip in $(seq $start_ip $end_ip); do
     target="$i1.$i2.$i3.$ip"
     echo "正在ping $target"
     ping -c 1 -w 1 $target > /dev/null
@@ -66,5 +83,3 @@ for ip in $(seq start_ip end_ip); do
         echo "$target is offline"
     fi
 done
-
-
