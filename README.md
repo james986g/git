@@ -1,5 +1,5 @@
 ```
-wget -O script.sh "https://raw.githubusercontent.com/james986g/git/refs/heads/main/CF.sh
+wget -O cf.sh "https://raw.githubusercontent.com/james986g/git/refs/heads/main/CF.sh
 ```
 扫CF的脚本
 运行目录下创建一个cfip.txt定义扫描范围
