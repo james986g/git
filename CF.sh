@@ -77,14 +77,20 @@ fi
 # 显示进度条
 echo "开始扫描，进度如下："
 
-# 循环对所有IP段逐一ping
+# 初始化计数器
 online_count=0
+scanned_count=0
+
+# 循环对所有IP段逐一ping
 for ip in $(seq $start_ip $end_ip); do
     target="$i1.$i2.$i3.$ip"
     
     # 执行ping命令
     ping -c 1 -w 1 $target > /dev/null
     
+    # 增加扫描的总IP计数
+    scanned_count=$((scanned_count + 1))
+
     # 如果IP地址在线
     if [[ $? -eq 0 ]]; then
         echo "$target is online"
@@ -108,3 +114,6 @@ if $only_online; then
 else
     echo -e "\n扫描完成。"
 fi
+
+# 输出总共扫描的IP地址数量
+echo "总共扫描了 $scanned_count 个 IP 地址。"
