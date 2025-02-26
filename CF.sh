@@ -41,11 +41,11 @@ function calculate_ip_range {
     # 对不同子网掩码进行不同的处理
     case $subnet_bits in
         8)
-            end_ip=255
+            end_ip=16777214
             start_ip=1
             ;;
         16)
-            end_ip=255
+            end_ip=65534
             start_ip=1
             ;;
         24)
@@ -53,11 +53,11 @@ function calculate_ip_range {
             start_ip=1
             ;;
         15)
-            end_ip=254
+            end_ip=32766
             start_ip=1
             ;;
         21)
-            end_ip=254
+            end_ip=2047
             start_ip=255
             ;;
         *)
