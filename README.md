@@ -1,12 +1,16 @@
 ```
+pkg install wget -y
+```
+```
 pkg install pv
-
 ```
 ```
 wget -O cf.sh "https://raw.githubusercontent.com/james986g/git/refs/heads/main/CF.sh"
 ```
 ```
 chmod +x cf.sh
+```
+```
 ./cf.sh
 ```
 开始使用
@@ -22,21 +26,14 @@ chmod +x cf.sh
 ...
 ```
 使用方法：
-普通扫描：
-默认扫描时，会显示在线和离线的 IP 地址：
-```
-./cf.sh 192.168.1.0/24
-```
-只显示在线的 IP 地址：
-如果你只想显示在线的 IP 地址，可以使用 -a 参数：
-```
-./cf.sh -a 192.168.1.0/24
-```
-运行脚本后，它会扫描指定的网络段并 ping 每个 IP 地址。
-所有在线的 IP 地址都会被写入到 online_ips.txt 文件。
-运行结束后，你可以查看文件 online_ips.txt，里面会列出所有在线的 IP 地址。
+# 只显示在线的IP并保存到文件
+```./cf.sh -a```
 
-output_file="online_ips.txt"：定义保存在线 IP 地址的文件。
-```> $output_file```：清空文件内容，以免每次运行时附加旧的在线 IP 地址。
-echo "$target" >> $output_file：如果某个 IP 地址在线，就将其添加到 online_ips.txt 文件中。
+# 提示输入网络段
+请输入需要扫描的网络段（例如 192.168.1.0/24 或 18.160.0.0/15）：
+```192.168.1.0/24```
 
+# 输出在线IP和离线IP，并将在线IP写入文件 online_ips.txt
+扫描完成，共有 5 个在线 IP 地址。
+在线的IP地址已经保存到 online_ips.txt 文件中。
+总共扫描了 254 个 IP 地址
