@@ -1,11 +1,16 @@
 #!/bin/bash
 
+# 捕获 Ctrl+C (SIGINT) 信号
+trap 'echo "程序已中断"; exit' SIGINT
+
 # 提示用户输入网络段（例如 192.168.1.0/24 或 18.160.0.0/15）
 echo "请输入需要扫描的网络段（例如 192.168.1.0/24 或 18.160.0.0/15）："
 read ip_range
 
 # 提取网络地址和子网掩码
 IFS='/' read -r network mask <<< "$ip_range"
+
+# 将网络地址转换为四个整数
 IFS='.' read -r i1 i2 i3 i4 <<< "$network"
 
 # 计算IP的范围，起始地址和结束地址根据子网掩码来确定
@@ -50,10 +55,10 @@ function calculate_ip_range {
     echo $start_ip $end_ip
 }
 
-# 获取 IP 范围
+# 通过掩码计算范围
 range=$(calculate_ip_range $mask $i1 $i2 $i3 $i4)
-start_ip=$(echo $range | awk '{print $1}')
-end_ip=$(echo $range | awk '{print $2}')
+start_ip=$(echo $range | cut -d ' ' -f1)
+end_ip=$(echo $range | cut -d ' ' -f2)
 
 # 循环对所有IP段逐一ping
 for ip in $(seq $start_ip $end_ip); do
