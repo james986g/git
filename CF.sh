@@ -1,7 +1,20 @@
 #!/bin/bash
 
+# 在线IP列表
+online_ips=()
+
 # 捕获 ctrl+c 中断信号
-trap "echo -e '\n用户中断了程序'; exit 0" SIGINT
+trap 'echo -e "\n用户中断了程序"; 
+      if [ ${#online_ips[@]} -gt 0 ]; then
+        echo "正在保存在线的IP地址..."
+        for ip in "${online_ips[@]}"; do
+          echo $ip >> online_ips.txt
+        done
+        echo -e "在线IP地址已经保存到 online_ips.txt"
+      else
+        echo "没有在线的IP地址，文件不会保存。"
+      fi
+      exit 0' SIGINT
 
 # 提示用户输入网络段（例如 192.168.1.0/24 或 18.160.0.0/15）
 echo "请输入需要扫描的网络段（例如 192.168.1.0/24 或 18.160.0.0/15）："
@@ -28,11 +41,11 @@ function calculate_ip_range {
     # 对不同子网掩码进行不同的处理
     case $subnet_bits in
         8)
-            end_ip=16777214
+            end_ip=255
             start_ip=1
             ;;
         16)
-            end_ip=65534
+            end_ip=255
             start_ip=1
             ;;
         24)
@@ -40,11 +53,11 @@ function calculate_ip_range {
             start_ip=1
             ;;
         15)
-            end_ip=32766
+            end_ip=254
             start_ip=1
             ;;
         21)
-            end_ip=2047
+            end_ip=254
             start_ip=255
             ;;
         *)
@@ -94,6 +107,8 @@ for ip in $(seq $start_ip $end_ip); do
         if $only_online; then
             echo "$target" >> $output_file  # 将在线IP地址写入文件
         fi
+        # 将在线IP添加到数组
+        online_ips+=("$target")
         # 增加在线IP计数
         ((online_count++))
     else
