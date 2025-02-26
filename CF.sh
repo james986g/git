@@ -53,7 +53,7 @@ function calculate_ip_range {
 }
 
 # 通过掩码计算范围
-start_ip, end_ip = calculate_ip_range $mask
+read start_ip end_ip <<< $(calculate_ip_range $mask)
 
 # 创建文件存储在线IP地址
 output_file="online_ips.txt"
