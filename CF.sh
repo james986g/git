@@ -63,11 +63,17 @@ trap_save_last_ip() {
 trap trap_save_last_ip SIGINT
 
 # 获取上次扫描的最后一个IP
+last_ip=""
 if [ -f "$last_ip_file" ]; then
-    read -p "发现上次扫描记录，是否从上次停止的IP继续扫描？(y/n): " continue_choice
-    if [ "$continue_choice" == "y" ]; then
-        last_ip=$(cat $last_ip_file)
-        echo "上次扫描的最后一个IP地址是: $last_ip"
+    last_ip=$(cat "$last_ip_file")
+    if [ -n "$last_ip" ]; then
+        read -p "发现上次扫描记录，是否从上次停止的IP继续扫描？(y/n): " continue_choice
+        if [ "$continue_choice" == "y" ]; then
+            echo "从上次扫描的IP地址 $last_ip 继续扫描"
+        else
+            echo "从头开始扫描"
+            last_ip=""  # 清空上次记录，重新扫描
+        fi
     fi
 fi
 
@@ -104,13 +110,13 @@ online_count=0
 # 开始扫描
 echo "开始扫描..."
 
+# 如果有上次停止的 IP 地址，跳过之前的 IP，重新开始扫描
+if [ -n "$last_ip" ]; then
+    start_int=$(ip_to_int "$last_ip")
+fi
+
 for ((ip_int=$start_int; ip_int<=$end_int; ip_int++)); do
     target=$(int_to_ip $ip_int)
-
-    # 如果有上次扫描的最后 IP，从该 IP 开始
-    if [ -n "$last_ip" ] && [[ "$target" < "$last_ip" ]]; then
-        continue
-    fi
 
     # 并行扫描
     echo "$target" | xargs -I {} -P 10 bash -c "
