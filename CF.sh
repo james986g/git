@@ -1,17 +1,40 @@
 #!/bin/bash
 
-# 捕获 ctrl+c 中断信号
-trap 'echo -e "\n用户中断了程序"; 
-      if [ ${#online_ips[@]} -gt 0 ]; then
-        echo "正在保存在线的IP地址..."
-        for ip in "${online_ips[@]}"; do
-          echo $ip >> online_ips.txt
-        done
-        echo -e "在线IP地址已经保存到 online_ips.txt"
-      else
-        echo "没有在线的IP地址，文件不会保存。"
-      fi
-      exit 0' SIGINT
+# 友好的帮助文档
+show_help() {
+    echo "用法: ./cf.sh [IP范围] [-a] [-i INTERVAL] [-p PORT] [-h]"
+    echo ""
+    echo "IP范围格式："
+    echo "  CIDR格式: 192.168.1.0/24"
+    echo "  IP范围格式: 192.168.1.10-192.168.1.100"
+    echo ""
+    echo "选项："
+    echo "  -a             仅显示在线的IP地址，并保存到 online_ips.txt"
+    echo "  -i INTERVAL    设置扫描间隔时间（默认为0.5秒）"
+    echo "  -p PORT        检查指定的端口（默认为80端口）"
+    echo "  -h             显示帮助信息"
+    exit 0
+}
+
+# 检查是否需要帮助
+if [[ $1 == "-h" || $1 == "--help" ]]; then
+    show_help
+fi
+
+# 默认设置
+ping_interval=0.5    # 默认Ping间隔时间
+port_to_check=80     # 默认端口为80
+
+# 解析命令行选项
+while getopts "a:i:p:h" opt; do
+    case $opt in
+        a) only_online=true ;;
+        i) ping_interval=$OPTARG ;;
+        p) port_to_check=$OPTARG ;;
+        h) show_help ;;
+        *) show_help ;;
+    esac
+done
 
 # 提示用户输入IP范围（支持CIDR或具体范围）
 echo "请输入需要扫描的IP范围（例如 192.168.1.0/24 或 18.163.8.12-18.163.8.100）："
@@ -29,6 +52,11 @@ ip_to_int() {
 int_to_ip() {
     local int=$1
     echo "$((int >> 24 & 255)).$((int >> 16 & 255)).$((int >> 8 & 255)).$((int & 255))"
+}
+
+# 日志记录函数
+log_message() {
+    echo "$(date) - $1" >> scan.log
 }
 
 # 判断输入格式（CIDR 或 IP 范围）
@@ -73,35 +101,60 @@ if [[ $1 == "-a" ]]; then
     echo "只显示在线的 IP 地址"
 fi
 
+# 记录脚本开始的时间
+start_time=$(date +%s)
+
 # 显示进度条
 echo "开始扫描，进度如下："
 
 # 统计在线 IP 地址
 online_count=0
 
-# 遍历 IP 地址范围并 Ping
+# 并行Ping IP地址
 for ((ip_int=$start_int; ip_int<=$end_int; ip_int++)); do
     target=$(int_to_ip $ip_int)
-    
-    # 执行 ping 命令
-    ping -c 1 -W 1 $target > /dev/null
-    
-    # 如果 IP 地址在线
-    if [[ $? -eq 0 ]]; then
-        echo "$target is online"
-        # 只保存在线 IP
-        if $only_online; then
-            echo "$target" >> $output_file
-        fi
-        online_ips+=("$target")
-        ((online_count++))
-    else
-        echo "$target is offline"
-    fi
 
-    # 进度条
-    echo -n "." | pv -n -s $ip_count > /dev/null
+    # 使用xargs实现并行Ping
+    echo $target | xargs -I {} -P 10 bash -c "
+        # 执行 ping 命令
+        ping -c 1 -W 1 {} > /dev/null
+        if [[ \$? -eq 0 ]]; then
+            echo -e '{} is online'
+            log_message '{} is online'
+            if $only_online; then
+                echo {} >> $output_file
+            fi
+            online_ips+=('{}')
+            ((online_count++))
+        else
+            echo -e '{} is offline'
+            log_message '{} is offline'
+        fi
+        # 检查指定端口
+        nc -z -w 1 {} $port_to_check &>/dev/null
+        if [[ \$? -eq 0 ]]; then
+            echo '{} has port $port_to_check open'
+        fi
+    " &
 done
+
+# 等待所有后台进程结束
+wait
+
+# 记录脚本结束的时间
+end_time=$(date +%s)
+
+# 计算总用时（秒）
+total_time=$((end_time - start_time))
+
+# 将总用时转换为分钟和秒
+minutes=$((total_time / 60))
+seconds=$((total_time % 60))
+
+# 输出扫描统计
+echo -e "\n总共扫描了 $ip_count 个 IP 地址。"
+echo -e "其中有 $online_count 个 IP 地址在线。"
+echo -e "扫描完成，总用时：${minutes}分钟${seconds}秒"
 
 # 输出在线 IP
 if $only_online; then
@@ -109,7 +162,3 @@ if $only_online; then
 else
     echo -e "\n扫描完成。"
 fi
-
-# 显示扫描统计
-echo -e "\n总共扫描了 $ip_count 个 IP 地址。"
-echo -e "其中有 $online_count 个 IP 地址在线。"
