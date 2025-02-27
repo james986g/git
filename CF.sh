@@ -2,7 +2,7 @@
 
 # 友好的帮助文档
 show_help() {
-    echo "用法: ./cf.sh [IP范围] [-a] [-i INTERVAL] [-p PORT] [-h]"
+    echo "用法: ./psh [IP范围] [-a] [-i INTERVAL] [-p PORT] [-h]"
     echo ""
     echo "IP范围格式："
     echo "  CIDR格式: 192.168.1.0/24"
