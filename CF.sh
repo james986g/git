@@ -24,21 +24,7 @@ fi
 # 默认设置
 ping_interval=0.5    # 默认Ping间隔时间
 port_to_check=80     # 默认端口为80
-
-# 解析命令行选项
-while getopts "a:i:p:h" opt; do
-    case $opt in
-        a) only_online=true ;;
-        i) ping_interval=$OPTARG ;;
-        p) port_to_check=$OPTARG ;;
-        h) show_help ;;
-        *) show_help ;;
-    esac
-done
-
-# 提示用户输入IP范围（支持CIDR或具体范围）
-echo "请输入需要扫描的IP范围（例如 192.168.1.0/24 或 18.163.8.12-18.163.8.100）："
-read ip_range
+last_ip_file="last_scanned_ip.txt"
 
 # 函数：将IP地址转换为整数
 ip_to_int() {
@@ -58,6 +44,29 @@ int_to_ip() {
 log_message() {
     echo "$(date) - $1" >> scan.log
 }
+
+# 函数：捕获Ctrl+C信号，保存最后扫描的IP
+trap_save_last_ip() {
+    echo "扫描中断，保存最后扫描的IP地址: $last_ip"
+    echo $last_ip > $last_ip_file
+    exit 1
+}
+
+# 注册 Ctrl+C 信号捕获
+trap trap_save_last_ip SIGINT
+
+# 获取上次扫描的最后一个IP
+if [ -f "$last_ip_file" ]; then
+    read -p "发现上次扫描记录，是否从上次停止的IP继续扫描？(y/n): " continue_choice
+    if [ "$continue_choice" == "y" ]; then
+        last_ip=$(cat $last_ip_file)
+        echo "上次扫描的最后一个IP地址是: $last_ip"
+    fi
+fi
+
+# 提示用户输入IP范围（支持CIDR或具体范围）
+echo "请输入需要扫描的IP范围（例如 192.168.1.0/24 或 18.163.8.12-18.163.8.100）："
+read ip_range
 
 # 判断输入格式（CIDR 或 IP 范围）
 if [[ $ip_range == */* ]]; then
@@ -114,6 +123,13 @@ online_count=0
 for ((ip_int=$start_int; ip_int<=$end_int; ip_int++)); do
     target=$(int_to_ip $ip_int)
 
+    # 如果存在上次扫描的最后 IP 地址，从该 IP 开始扫描
+    if [ -n "$last_ip" ]; then
+        if [[ $target < $last_ip ]]; then
+            continue
+        fi
+    fi
+
     # 使用xargs实现并行Ping
     echo $target | xargs -I {} -P 10 bash -c "
         # 执行 ping 命令
@@ -136,6 +152,9 @@ for ((ip_int=$start_int; ip_int<=$end_int; ip_int++)); do
             echo '{} has port $port_to_check open'
         fi
     " &
+    
+    # 保存最后一个扫描的 IP
+    last_ip=$target
 done
 
 # 等待所有后台进程结束
