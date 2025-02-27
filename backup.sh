@@ -1,8 +1,5 @@
 #!/bin/bash
 
-# 在线IP列表
-online_ips=()
-
 # 捕获 ctrl+c 中断信号
 trap 'echo -e "\n用户中断了程序"; 
       if [ ${#online_ips[@]} -gt 0 ]; then
@@ -16,69 +13,58 @@ trap 'echo -e "\n用户中断了程序";
       fi
       exit 0' SIGINT
 
-# 提示用户输入网络段（例如 192.168.1.0/24 或 18.160.0.0/15）
-echo "请输入需要扫描的网络段（例如 192.168.1.0/24 或 18.160.0.0/15）："
+# 提示用户输入IP范围（支持CIDR或具体范围）
+echo "请输入需要扫描的IP范围（例如 192.168.1.0/24 或 18.163.8.12-18.163.8.100）："
 read ip_range
 
-# 提取网络地址和子网掩码
-IFS='/' read -r network mask <<< "$ip_range"
-
-# 将网络地址转换为四个整数
-IFS='.' read -r i1 i2 i3 i4 <<< "$network"
-
-# 计算IP的范围，起始地址和结束地址根据子网掩码来确定
-function calculate_ip_range {
-    local mask=$1
-    local network="$2.$3.$4.$5"
-
-    # 将掩码转换为网络前缀长度（32 - 子网掩码）
-    local subnet_bits=$((32 - mask))
-
-    # 计算IP范围
-    local start_ip=1
-    local end_ip=254
-    
-    # 对不同子网掩码进行不同的处理
-    case $subnet_bits in
-        8)
-            end_ip=16777214
-            start_ip=1
-            ;;
-        16)
-            end_ip=65534
-            start_ip=1
-            ;;
-        24)
-            end_ip=254
-            start_ip=1
-            ;;
-        15)
-            end_ip=32766
-            start_ip=1
-            ;;
-        21)
-            end_ip=2047
-            start_ip=255
-            ;;
-        *)
-            end_ip=254
-            start_ip=1
-    esac
-
-    echo $start_ip $end_ip
+# 函数：将IP地址转换为整数
+ip_to_int() {
+    local ip=$1
+    local a b c d
+    IFS='.' read -r a b c d <<< "$ip"
+    echo $((a * 256 ** 3 + b * 256 ** 2 + c * 256 + d))
 }
 
-# 通过掩码计算范围
-read start_ip end_ip <<< $(calculate_ip_range $mask)
+# 函数：将整数转换为IP地址
+int_to_ip() {
+    local int=$1
+    echo "$((int >> 24 & 255)).$((int >> 16 & 255)).$((int >> 8 & 255)).$((int & 255))"
+}
 
-# 创建文件存储在线IP地址
+# 判断输入格式（CIDR 或 IP 范围）
+if [[ $ip_range == */* ]]; then
+    # 处理 CIDR 格式
+    IFS='/' read -r network mask <<< "$ip_range"
+    IFS='.' read -r i1 i2 i3 i4 <<< "$network"
+    
+    # 计算 IP 总数
+    ip_count=$((2 ** (32 - mask)))
+
+    # 获取起始 IP 和结束 IP
+    start_int=$(ip_to_int "$network")
+    end_int=$((start_int + ip_count - 1))
+
+elif [[ $ip_range == *-* ]]; then
+    # 处理 IP 范围格式
+    IFS='-' read -r start_ip end_ip <<< "$ip_range"
+
+    # 转换 IP 地址为整数
+    start_int=$(ip_to_int $start_ip)
+    end_int=$(ip_to_int $end_ip)
+
+    # 计算 IP 总数
+    ip_count=$((end_int - start_int + 1))
+
+else
+    echo "输入格式错误，请输入 CIDR（如 192.168.1.0/24）或 IP 范围（如 192.168.1.10-192.168.1.100）"
+    exit 1
+fi
+
+# 创建存储在线 IP 地址的文件
 output_file="online_ips.txt"
-> $output_file # 清空文件内容
+> $output_file  # 清空文件内容
 
-# 计算总IP数
-total_ips=$((end_ip - start_ip + 1))
-
-# 是否只显示在线IP的标志
+# 是否只显示在线 IP
 only_online=false
 
 # 检查是否传入了 -a 参数
@@ -90,42 +76,40 @@ fi
 # 显示进度条
 echo "开始扫描，进度如下："
 
-# 统计在线IP地址的计数器
+# 统计在线 IP 地址
 online_count=0
 
-# 循环对所有IP段逐一ping
-for ip in $(seq $start_ip $end_ip); do
-    target="$i1.$i2.$i3.$ip"
+# 遍历 IP 地址范围并 Ping
+for ((ip_int=$start_int; ip_int<=$end_int; ip_int++)); do
+    target=$(int_to_ip $ip_int)
     
-    # 执行ping命令
-    ping -c 1 -w 1 $target > /dev/null
+    # 执行 ping 命令
+    ping -c 1 -W 1 $target > /dev/null
     
-    # 如果IP地址在线
+    # 如果 IP 地址在线
     if [[ $? -eq 0 ]]; then
         echo "$target is online"
-        # 如果 -a 参数被传入，且只显示在线的 IP
+        # 只保存在线 IP
         if $only_online; then
-            echo "$target" >> $output_file  # 将在线IP地址写入文件
+            echo "$target" >> $output_file
         fi
-        # 将在线IP添加到数组
         online_ips+=("$target")
-        # 增加在线IP计数
         ((online_count++))
     else
         echo "$target is offline"
     fi
 
-    # 更新进度条
-    echo -n "." | pv -n -s $total_ips > /dev/null
+    # 进度条
+    echo -n "." | pv -n -s $ip_count > /dev/null
 done
 
-# 输出在线IP列表
+# 输出在线 IP
 if $only_online; then
-    echo -e "\n在线的IP地址已经保存到 $output_file 文件中。"
+    echo -e "\n在线的 IP 地址已经保存到 $output_file 文件中。"
 else
     echo -e "\n扫描完成。"
 fi
 
-# 输出总共扫描的IP地址和在线的IP数量
-echo -e "\n总共扫描了 $total_ips 个IP地址。"
-echo -e "其中有 $online_count 个IP地址在线。"
+# 显示扫描统计
+echo -e "\n总共扫描了 $ip_count 个 IP 地址。"
+echo -e "其中有 $online_count 个 IP 地址在线。"
