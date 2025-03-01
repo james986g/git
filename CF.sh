@@ -17,7 +17,7 @@ ping_interval=0.5    # 默认Ping间隔时间
 port_to_check=80     # 默认端口
 last_ip_file="last_scanned_ip.txt"
 only_online=false    # 默认显示所有IP
-ip_list_file="待扫描ip.txt"
+ip_list_file="list_ip.txt" #待扫描ip
 
 # 解析命令行参数
 while getopts "ai:p:h" opt; do
