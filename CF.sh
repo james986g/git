@@ -25,6 +25,7 @@ fi
 ping_interval=0.5    # 默认Ping间隔时间
 port_to_check=80     # 默认端口为80
 last_ip_file="last_scanned_ip.txt"
+last_range_file="last_scanned_range.txt"
 only_online=false    # 默认显示所有IP，不仅仅是在线IP
 
 # 解析命令行参数
@@ -56,30 +57,40 @@ int_to_ip() {
 trap_save_last_ip() {
     echo "扫描中断，保存最后扫描的IP地址: $last_ip"
     echo $last_ip > $last_ip_file
+    echo $ip_range > $last_range_file
     exit 1
 }
 
 # 注册 Ctrl+C 信号捕获
 trap trap_save_last_ip SIGINT
 
-# 获取上次扫描的最后一个IP
+# 获取上次扫描的最后一个IP和IP范围
 last_ip=""
+ip_range=""
 if [ -f "$last_ip_file" ]; then
     last_ip=$(cat "$last_ip_file")
-    if [ -n "$last_ip" ]; then
-        read -p "发现上次扫描记录，是否从上次停止的IP继续扫描？(y/n): " continue_choice
-        if [ "$continue_choice" == "y" ]; then
-            echo "从上次扫描的IP地址 $last_ip 继续扫描"
-        else
-            echo "从头开始扫描"
-            last_ip=""  # 清空上次记录，重新扫描
-        fi
+fi
+if [ -f "$last_range_file" ]; then
+    ip_range=$(cat "$last_range_file")
+fi
+
+if [ -n "$last_ip" ] && [ -n "$ip_range" ]; then
+    read -p "发现上次扫描记录，是否从上次停止的IP继续扫描？(y/n): " continue_choice
+    if [ "$continue_choice" == "y" ]; then
+        echo "从上次扫描的IP地址 $last_ip 继续扫描"
+    else
+        echo "从头开始扫描"
+        last_ip=""
+        ip_range=""
     fi
 fi
 
-# 提示用户输入IP范围
-echo "请输入需要扫描的IP范围（例如 192.168.1.0/24 或 18.163.8.12-18.163.8.100）："
-read ip_range
+# 如果没有恢复 IP 范围，则提示用户输入
+if [ -z "$ip_range" ]; then
+    echo "请输入需要扫描的IP范围（例如 192.168.1.0/24 或 18.163.8.12-18.163.8.100）："
+    read ip_range
+    echo $ip_range > $last_range_file
+fi
 
 # 判断输入格式（CIDR 或 IP 范围）
 if [[ $ip_range == */* ]]; then
@@ -130,6 +141,7 @@ for ((ip_int=$start_int; ip_int<=$end_int; ip_int++)); do
 
     # 保存最后扫描的 IP
     last_ip=$target
+    echo $last_ip > $last_ip_file
 done
 
 # 等待所有进程完成
