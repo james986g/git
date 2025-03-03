@@ -2,17 +2,17 @@
 pkg install wget -y
 ```
 ```
-wget -O psh "https://raw.githubusercontent.com/james986g/git/refs/heads/main/CF.sh"
+wget -O sh "https://raw.githubusercontent.com/james986g/git/refs/heads/main/CF.sh"
 ```
 ```
-chmod +x psh
+chmod +x sh
 ```
 ```
 ./psh
 ```
 使用方法：
 # 程序说明
-```./psh -h```
+```./sh -h```
 
 # 提示输入网络段
 请输入需要扫描的网络段（例如 192.168.1.0/24 或 18.160.0.0-18.170.0.0）：
