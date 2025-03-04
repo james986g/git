@@ -22,7 +22,7 @@ if [[ $1 == "-h" || $1 == "--help" ]]; then
 fi
 
 # 默认设置
-ping_interval=0.5    # 默认Ping间隔时间
+ping_interval=0.4    # 默认Ping间隔时间
 port_to_check=80     # 默认端口为80
 last_ip_file="last_scanned_ip.txt"
 last_range_file="last_scanned_range.txt"
@@ -131,7 +131,7 @@ for ((ip_int=$start_int; ip_int<=$end_int; ip_int++)); do
 
     # 并行扫描
     echo "$target" | xargs -I {} -P 10 bash -c "
-        if ping -c 1 -W 0.8 {} > /dev/null; then
+        if ping -c 1 -W 0.7 {} > /dev/null; then
             echo '{} is online' | tee -a scan.log
             echo {} >> \"$output_file\"
             exit 0
