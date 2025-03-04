@@ -1,6 +1,6 @@
 #!/bin/bash
 
-# 帮助文档（不变）
+# 帮助文档
 show_help() {
     echo "用法: ./psh [IP范围] [-a] [-i INTERVAL] [-p PORT] [-t TIMEOUT] [-j JOBS] [-h]"
     echo ""
@@ -11,15 +11,15 @@ show_help() {
     echo "选项："
     echo "  -a             仅显示在线的IP地址，并保存到 online_ips.txt"
     echo "  -i INTERVAL    设置扫描间隔时间（默认为0.1秒）"
-    echo "  -p PORT        检查指定的端口（默认为80端口）"
-    echo "  -t TIMEOUT     设置ping超时时间（默认为1秒，最小0.1秒）"
+    echo "  -p PORT        检查指定的端口（默认只用ping，指定端口启用nc）"
+    echo "  -t TIMEOUT     设置ping超时时间（默认为0.9秒，最小0.1秒）"
     echo "  -j JOBS        设置并行进程数（默认为10）"
     echo "  -h             显示帮助信息"
     exit 0
 }
 
-# 检查工具（不变）
-for cmd in ping nc bc; do
+# 检查工具
+for cmd in ping bc; do
     if ! command -v $cmd &>/dev/null; then
         echo "错误：需要安装 $cmd 命令"
         exit 1
@@ -28,16 +28,15 @@ done
 
 # 默认设置
 ping_interval=0.1
-port_to_check=80
-ping_timeout=1
+port_to_check=""
+ping_timeout=0.9
 parallel_jobs=10
 last_ip_file="last_scanned_ip.txt"
 last_range_file="last_scanned_range.txt"
 only_online=false
 temp_output=$(mktemp)
-temp_current_ip=$(mktemp)
 
-# 解析参数（不变）
+# 解析参数
 while getopts "ai:p:t:j:h" opt; do
     case $opt in
         a) only_online=true ;;
@@ -50,13 +49,13 @@ while getopts "ai:p:t:j:h" opt; do
     esac
 done
 
-# 验证超时时间（不变）
+# 验证超时时间
 if ! [[ "$ping_timeout" =~ ^[0-9]*\.?[0-9]+$ ]] || (( $(echo "$ping_timeout < 0.1" | bc -l) )); then
     echo "错误：超时时间必须为大于等于0.1秒的数字"
     exit 1
 fi
 
-# IP 转换函数（不变）
+# IP 转换函数
 ip_to_int() {
     local ip=$1
     local a b c d
@@ -69,25 +68,19 @@ int_to_ip() {
     echo "$((int >> 24 & 255)).$((int >> 16 & 255)).$((int >> 8 & 255)).$((int & 255))"
 }
 
-# 中断处理函数（不变）
+# 中断处理
 trap_save_last_ip() {
-    echo "扫描中断，保存最后扫描到的IP..."
-    if [ -s "$temp_current_ip" ]; then
-        last_ip=$(cat "$temp_current_ip")
-        echo "最后扫描到的IP: $last_ip"
-        echo "$last_ip" > "$last_ip_file"
-    else
-        echo "未扫描任何IP，保存当前范围"
-    fi
+    echo "扫描中断，保存最后扫描到的IP: $last_ip"
+    echo "$last_ip" > "$last_ip_file"
     echo "$ip_range" > "$last_range_file"
     cat "$temp_output" >> "online_ips.txt"
-    rm -f "$temp_output" "$temp_current_ip"
+    rm -f "$temp_output"
     exit 1
 }
 
 trap trap_save_last_ip SIGINT
 
-# 获取上次扫描记录（不变）
+# 获取上次扫描记录
 last_ip=""
 ip_range=""
 if [ -f "$last_ip_file" ]; then
@@ -111,7 +104,7 @@ if [ -z "$ip_range" ]; then
     echo $ip_range > "$last_range_file"
 fi
 
-# 解析 IP 范围（不变）
+# 解析 IP 范围
 if [[ $ip_range == */* ]]; then
     IFS='/' read -r network mask <<< "$ip_range"
     start_int=$(ip_to_int "$network")
@@ -127,7 +120,7 @@ else
     exit 1
 fi
 
-# 初始化输出文件（不变）
+# 初始化输出文件
 output_file="online_ips.txt"
 > "$output_file"
 
@@ -140,7 +133,7 @@ if [ -n "$last_ip" ]; then
     start_int=$(ip_to_int "$last_ip")
 fi
 
-# 生成完整 IP 列表
+# 生成 IP 列表
 ip_list=()
 for ((i=$start_int; i<=$end_int; i++)); do
     ip_list+=($(int_to_ip $i))
@@ -149,24 +142,34 @@ done
 total_ips=${#ip_list[@]}
 
 # 并行扫描
-printf "%s\n" "${ip_list[@]}" | xargs -I {} -P "$parallel_jobs" bash -c "
-    echo {} > $temp_current_ip
-    if ping -c 1 -W $ping_timeout {} >/dev/null 2>&1; then
-        if nc -z -w 1 {} $port_to_check 2>/dev/null; then
-            echo '{} is online (port $port_to_check open)' | tee -a scan.log
+if [ -n "$port_to_check" ] && command -v nc &>/dev/null; then
+    printf "%s\n" "${ip_list[@]}" | xargs -I {} -P "$parallel_jobs" bash -c "
+        last_ip={}
+        if ping -c 1 -W $ping_timeout {} >/dev/null 2>&1; then
+            if nc -z -w 0.5 {} $port_to_check 2>/dev/null; then  # 缩短 nc 超时
+                echo '{} is online (port $port_to_check open)' | tee -a scan.log
+                echo {} >> $temp_output
+            fi
+        fi
+    "
+else
+    printf "%s\n" "${ip_list[@]}" | xargs -I {} -P "$parallel_jobs" bash -c "
+        last_ip={}
+        if ping -c 1 -W $ping_timeout {} >/dev/null 2>&1; then
+            echo '{} is online' | tee -a scan.log
             echo {} >> $temp_output
         fi
-    fi
-"
+    "
+fi
 
 wait
 
-# 显示最终进度
+# 显示进度
 progress=$(echo "scale=2; $total_ips * 100 / $ip_count" | bc)
 printf "\r扫描进度: %.2f%% (%d/%d)\n" $progress $total_ips $ip_count
 
 cat "$temp_output" >> "$output_file"
-rm -f "$temp_output" "$temp_current_ip"
+rm -f "$temp_output"
 
 end_time=$(date +%s)
 total_time=$((end_time - start_time))
@@ -176,7 +179,11 @@ seconds=$((total_time % 60))
 online_count=$(wc -l < "$output_file")
 
 echo -e "\n总共扫描了 $ip_count 个 IP 地址。"
-echo -e "其中有 $online_count 个 IP 地址在线（端口 $port_to_check 开放）。"
+if [ -n "$port_to_check" ]; then
+    echo -e "其中有 $online_count 个 IP 地址在线（端口 $port_to_check 开放）。"
+else
+    echo -e "其中有 $online_count 个 IP 地址在线。"
+fi
 echo -e "扫描完成，总用时：${minutes}分钟${seconds}秒"
 
 if $only_online; then
