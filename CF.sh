@@ -27,10 +27,10 @@ for cmd in ping nc bc; do
 done
 
 # 默认设置
-ping_interval=0.1  # 减少默认间隔
+ping_interval=0.1
 port_to_check=80
 ping_timeout=1
-parallel_jobs=10   # 默认并行度恢复到原始值
+parallel_jobs=10
 last_ip_file="last_scanned_ip.txt"
 last_range_file="last_scanned_range.txt"
 only_online=false
@@ -140,18 +140,16 @@ if [ -n "$last_ip" ]; then
     start_int=$(ip_to_int "$last_ip")
 fi
 
-# 生成完整 IP 列表（一次性扫描）
+# 生成完整 IP 列表
 ip_list=()
 for ((i=$start_int; i<=$end_int; i++)); do
     ip_list+=($(int_to_ip $i))
 done
 
-# 并行扫描并记录进度
 total_ips=${#ip_list[@]}
-scanned_count=0
 
+# 并行扫描
 printf "%s\n" "${ip_list[@]}" | xargs -I {} -P "$parallel_jobs" bash -c "
-    # 原子更新当前扫描的 IP
     echo {} > $temp_current_ip
     if ping -c 1 -W $ping_timeout {} >/dev/null 2>&1; then
         if nc -z -w 1 {} $port_to_check 2>/dev/null; then
@@ -159,22 +157,13 @@ printf "%s\n" "${ip_list[@]}" | xargs -I {} -P "$parallel_jobs" bash -c "
             echo {} >> $temp_output
         fi
     fi
-    # 简单计数（避免锁机制）
-    echo \$((scanned_count += 1)) > /tmp/scanned_count
 "
 
 wait
 
-# 获取最终扫描计数（由于并行限制，这里用文件计数替代）
-if [ -f /tmp/scanned_count ]; then
-    scanned_count=$(cat /tmp/scanned_count)
-    rm -f /tmp/scanned_count
-else
-    scanned_count=$total_ips  # 默认假设全部扫描完成
-fi
-
-progress=$(echo "scale=2; $scanned_count * 100 / $total_ips" | bc)
-printf "\r扫描进度: %.2f%% (%d/%d)\n" $progress $scanned_count $total_ips
+# 显示最终进度
+progress=$(echo "scale=2; $total_ips * 100 / $ip_count" | bc)
+printf "\r扫描进度: %.2f%% (%d/%d)\n" $progress $total_ips $ip_count
 
 cat "$temp_output" >> "$output_file"
 rm -f "$temp_output" "$temp_current_ip"
