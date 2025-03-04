@@ -2,7 +2,7 @@
 
 # 友好的帮助文档
 show_help() {
-    echo "用法: ./psh [IP范围] [-a] [-i INTERVAL] [-p PORT] [-h]"
+    echo "用法: ./psh [-a] [-i INTERVAL] [-p PORT] [-h]"
     echo ""
     echo "IP范围格式："
     echo "  CIDR格式: 192.168.1.0/24"
@@ -74,8 +74,27 @@ if [ -f "$last_range_file" ]; then
     ip_range=$(cat "$last_range_file")
 fi
 
-if [ -n "$last_ip" ] && [ -n "$ip_range" ]; then
-    read -p "发现上次扫描记录，是否从上次停止的IP继续扫描？(y/n): " continue_choice
+# 让用户选择扫描方式
+echo "请选择扫描方式："
+echo "1. 扫描 list_ip.txt 的内容"
+echo "2. 发现上次扫描记录，是否从上次停止的IP继续扫描？(y/n)"
+read -p "请输入选项 (1/2): " choice
+
+if [ "$choice" == "1" ]; then
+    if [ -f "list_ip.txt" ]; then
+        ip_list=($(cat list_ip.txt))
+        for ip_range in "${ip_list[@]}"; do
+            echo "正在扫描 IP 段: $ip_range"
+            echo $ip_range > $last_range_file
+            ./psh "$ip_range" # 递归调用自身扫描
+        done
+        exit 0
+    else
+        echo "错误：list_ip.txt 文件不存在！"
+        exit 1
+    fi
+elif [ "$choice" == "2" ] && [ -n "$last_ip" ] && [ -n "$ip_range" ]; then
+    read -p "是否从上次停止的IP继续扫描？(y/n): " continue_choice
     if [ "$continue_choice" == "y" ]; then
         echo "从上次扫描的IP地址 $last_ip 继续扫描"
     else
@@ -83,6 +102,9 @@ if [ -n "$last_ip" ] && [ -n "$ip_range" ]; then
         last_ip=""
         ip_range=""
     fi
+else
+    echo "输入无效，退出程序"
+    exit 1
 fi
 
 # 如果没有恢复 IP 范围，则提示用户输入
