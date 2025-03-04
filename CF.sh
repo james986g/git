@@ -130,13 +130,12 @@ for ((ip_int=$start_int; ip_int<=$end_int; ip_int++)); do
     target=$(int_to_ip $ip_int)
 
     # 并行扫描
-    echo "$target" | xargs -I {} -P 10 bash -c "
-        if ping -c 1 -W 0.7 {} > /dev/null; then
-            echo '{} is online' | tee -a scan.log
-            echo {} >> \"$output_file\"
-            exit 0
-        fi
-        exit 1
+   echo "$target" | parallel -j 20 --halt soon,fail=1 "
+    if ping -c 1 -W 0.8 {} > /dev/null; then
+        echo '{} is online' | tee -a scan.log
+        echo {} >> \"$output_file\"
+    fi
+    exit 1
     " &
 
     # 保存最后扫描的 IP
