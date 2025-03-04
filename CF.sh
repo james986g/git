@@ -2,7 +2,7 @@
 
 # 友好的帮助文档
 show_help() {
-    echo "用法: ./psh [IP范围] [-a] [-i INTERVAL] [-p PORT] [-h]"
+    echo "用法: ./psh [IP范围] [-a] [-i INTERVAL] [-p PORT] [-t TIMEOUT] [-j JOBS] [-h]"
     echo ""
     echo "IP范围格式："
     echo "  CIDR格式: 192.168.1.0/24"
@@ -12,6 +12,8 @@ show_help() {
     echo "  -a             仅显示在线的IP地址，并保存到 online_ips.txt"
     echo "  -i INTERVAL    设置扫描间隔时间（默认为0.5秒）"
     echo "  -p PORT        检查指定的端口（默认为80端口）"
+    echo "  -t TIMEOUT     设置ping超时时间（默认为1秒，最小0.1秒）"
+    RAISE NOTICE "  -j JOBS        设置并行进程数（默认为CPU核心数）"
     echo "  -h             显示帮助信息"
     exit 0
 }
@@ -21,25 +23,44 @@ if [[ $1 == "-h" || $1 == "--help" ]]; then
     show_help
 fi
 
+# 检查必要工具
+for cmd in ping nc bc; do
+    if ! command -v $cmd &>/dev/null; then
+        echo "错误：需要安装 $cmd 命令"
+        exit 1
+    fi
+done
+
 # 默认设置
-ping_interval=0.4    # 默认Ping间隔时间
-port_to_check=80     # 默认端口为80
+ping_interval=0.5
+port_to_check=80
+ping_timeout=1
+parallel_jobs=$(nproc)  # 默认并行数为 CPU 核心数
 last_ip_file="last_scanned_ip.txt"
 last_range_file="last_scanned_range.txt"
-only_online=false    # 默认显示所有IP，不仅仅是在线IP
+only_online=false
+temp_output=$(mktemp)  # 临时文件存储结果
 
 # 解析命令行参数
-while getopts "ai:p:h" opt; do
+while getopts "ai:p:t:j:h" opt; do
     case $opt in
         a) only_online=true ;;
         i) ping_interval=$OPTARG ;;
         p) port_to_check=$OPTARG ;;
+        t) ping_timeout=$OPTARG ;;
+        j) parallel_jobs=$OPTARG ;;
         h) show_help ;;
         *) show_help ;;
     esac
 done
 
-# 函数：将IP地址转换为整数
+# 验证超时时间
+if ! [[ "$ping_timeout" =~ ^[0-9]*\.?[0-9]+$ ]] || (( $(echo "$ping_timeout < 0.1" | bc -l) )); then
+    echo "错误：超时时间必须为大于等于0.1秒的数字"
+    exit 1
+fi
+
+# 函数：IP 转换
 ip_to_int() {
     local ip=$1
     local a b c d
@@ -47,24 +68,24 @@ ip_to_int() {
     echo $((a * 256 ** 3 + b * 256 ** 2 + c * 256 + d))
 }
 
-# 函数：将整数转换为IP地址
 int_to_ip() {
     local int=$1
     echo "$((int >> 24 & 255)).$((int >> 16 & 255)).$((int >> 8 & 255)).$((int & 255))"
 }
 
-# 处理 Ctrl+C，保存最后扫描 IP
+# 处理 Ctrl+C
 trap_save_last_ip() {
-    echo "扫描中断，保存最后扫描的IP地址: $last_ip"
-    echo $last_ip > $last_ip_file
-    echo $ip_range > $last_range_file
+    echo "扫描中断，保存最后扫描的IP范围: $ip_range"
+    echo $last_ip > "$last_ip_file"
+    echo $ip_range > "$last_range_file"
+    cat "$temp_output" >> "online_ips.txt"
+    rm -f "$temp_output"
     exit 1
 }
 
-# 注册 Ctrl+C 信号捕获
 trap trap_save_last_ip SIGINT
 
-# 获取上次扫描的最后一个IP和IP范围
+# 获取上次扫描记录
 last_ip=""
 ip_range=""
 if [ -f "$last_ip_file" ]; then
@@ -75,24 +96,20 @@ if [ -f "$last_range_file" ]; then
 fi
 
 if [ -n "$last_ip" ] && [ -n "$ip_range" ]; then
-    read -p "发现上次扫描记录，是否从上次停止的IP继续扫描？(y/n): " continue_choice
-    if [ "$continue_choice" == "y" ]; then
-        echo "从上次扫描的IP地址 $last_ip 继续扫描"
-    else
-        echo "从头开始扫描"
+    read -p "发现上次扫描记录，是否从 $last_ip 继续？(y/n): " continue_choice
+    if [ "$continue_choice" != "y" ]; then
         last_ip=""
         ip_range=""
     fi
 fi
 
-# 如果没有恢复 IP 范围，则提示用户输入
 if [ -z "$ip_range" ]; then
     echo "请输入需要扫描的IP范围（例如 192.168.1.0/24 或 18.163.8.12-18.163.8.100）："
     read ip_range
-    echo $ip_range > $last_range_file
+    echo $ip_range > "$last_range_file"
 fi
 
-# 判断输入格式（CIDR 或 IP 范围）
+# 解析 IP 范围
 if [[ $ip_range == */* ]]; then
     IFS='/' read -r network mask <<< "$ip_range"
     start_int=$(ip_to_int "$network")
@@ -100,72 +117,75 @@ if [[ $ip_range == */* ]]; then
     end_int=$((start_int + ip_count - 1))
 elif [[ $ip_range == *-* ]]; then
     IFS='-' read -r start_ip end_ip <<< "$ip_range"
-    start_int=$(ip_to_int $start_ip)
-    end_int=$(ip_to_int $end_ip)
+    start_int=$(ip_to_int "$start_ip")
+    end_int=$(ip_to_int "$end_ip")
     ip_count=$((end_int - start_int + 1))
 else
-    echo "输入格式错误，请输入 CIDR 或 IP 范围"
+    echo "错误：IP范围格式无效，请使用 CIDR 或 IP范围格式"
     exit 1
 fi
 
-# 创建存储在线 IP 地址的文件
+# 初始化输出文件
 output_file="online_ips.txt"
 > "$output_file"
 
-# 记录脚本开始时间
 start_time=$(date +%s)
-
-# 统计在线 IP
 online_count=0
 
-# 开始扫描
-echo "开始扫描..."
+echo "开始扫描（并行进程数: $parallel_jobs）..."
 
-# 如果有上次停止的 IP 地址，跳过之前的 IP，重新开始扫描
 if [ -n "$last_ip" ]; then
     start_int=$(ip_to_int "$last_ip")
 fi
 
-for ((ip_int=$start_int; ip_int<=$end_int; ip_int++)); do
-    target=$(int_to_ip $ip_int)
+# 分批扫描
+batch_size=100
+for ((ip_int=$start_int; ip_int<=$end_int; ip_int+=batch_size)); do
+    batch_end=$((ip_int + batch_size - 1))
+    if [ $batch_end -gt $end_int ]; then
+        batch_end=$end_int
+    fi
 
-    # 并行扫描
-    echo "$target" | xargs -I {} -P 10 bash -c "
-        if ping -c 1 -W 0.9 {} > /dev/null; then
-            echo '{} is online' | tee -a scan.log
-            echo {} >> \"$output_file\"
-            exit 0
+    # 生成当前批次的 IP 列表
+    ip_list=()
+    for ((i=$ip_int; i<=$batch_end; i++)); do
+        ip_list+=($(int_to_ip $i))
+    done
+
+    # 并行扫描当前批次
+    printf "%s\n" "${ip_list[@]}" | xargs -I {} -P "$parallel_jobs" bash -c "
+        if ping -c 1 -W $ping_timeout {} >/dev/null 2>&1; then
+            if nc -z -w 1 {} $port_to_check 2>/dev/null; then
+                echo '{} is online (port $port_to_check open)' | tee -a scan.log
+                echo {} >> $temp_output
+            fi
         fi
-        exit 1
-    " &
+    "
 
-    # 保存最后扫描的 IP
-    last_ip=$target
-    echo $last_ip > $last_ip_file
+    # 更新最后扫描的 IP（每批次结束时）
+    last_ip=$(int_to_ip $batch_end)
+    echo $last_ip > "$last_ip_file"
+    sleep $ping_interval
 done
 
-# 等待所有进程完成
+# 等待所有任务完成并整理结果
 wait
+cat "$temp_output" >> "$output_file"
+rm -f "$temp_output"
 
-# 记录结束时间
 end_time=$(date +%s)
-
-# 计算总用时
 total_time=$((end_time - start_time))
 minutes=$((total_time / 60))
 seconds=$((total_time % 60))
 
-# 统计在线IP
 online_count=$(wc -l < "$output_file")
 
-# 输出结果
 echo -e "\n总共扫描了 $ip_count 个 IP 地址。"
-echo -e "其中有 $online_count 个 IP 地址在线。"
+echo -e "其中有 $online_count 个 IP 地址在线（端口 $port_to_check 开放）。"
 echo -e "扫描完成，总用时：${minutes}分钟${seconds}秒"
 
-# 如果选择 -a 选项，则仅显示在线IP
 if $only_online; then
-    echo -e "\n在线的 IP 地址已经保存到 $output_file 文件中。"
+    echo -e "\n在线的 IP 地址已保存到 $output_file"
 else
     cat "$output_file"
 fi
