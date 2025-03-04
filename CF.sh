@@ -83,26 +83,26 @@ if [ -z "$SKIP_MENU" ]; then
             echo "错误：list_ip.txt 文件不存在！"
             exit 1
         fi
-    elif [ "$choice" == "2" ] && [ -n "$last_ip" ] && [ -n "$ip_range_saved" ]; then
-        read -p "是否从上次停止的IP继续扫描？(y/n): " continue_choice
-        if [ "$continue_choice" == "y" ]; then
-            echo "从上次扫描的IP地址 $last_ip 继续扫描"
-            ip_range="$ip_range_saved"
+    elif [ "$choice" == "2" ]; then
+        if [ -n "$last_ip" ] && [ -n "$ip_range_saved" ]; then
+            read -p "是否从上次停止的IP继续扫描？(y/n): " continue_choice
+            if [ "$continue_choice" == "y" ]; then
+                echo "从上次扫描的IP地址 $last_ip 继续扫描"
+                ip_range="$ip_range_saved"
+            else
+                echo "从头开始扫描"
+                last_ip=""
+                ip_range=""
+            fi
         else
-            echo "从头开始扫描"
-            last_ip=""
-            ip_range=""
+            echo "没有找到上次扫描记录，请输入新的 IP 范围"
+            read -p "请输入需要扫描的IP范围（例如 192.168.1.0/24 或 18.163.8.12-18.163.8.100）: " ip_range
+            echo "$ip_range" > "$last_range_file"
         fi
     else
-        echo "输入无效，退出程序"
-        exit 1
+        echo "输入无效，请输入需要扫描的IP范围（例如 192.168.1.0/24 或 18.163.8.12-18.163.8.100）"
+        read -p "请输入 IP 范围: " ip_range
     fi
-fi
-
-# 如果没有恢复 IP 范围，则提示用户输入
-if [ -z "$ip_range" ]; then
-    read -p "请输入需要扫描的IP范围（例如 192.168.1.0/24 或 18.163.8.12-18.163.8.100）: " ip_range
-    echo "$ip_range" > "$last_range_file"
 fi
 
 # IP 转换函数
