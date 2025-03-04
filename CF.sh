@@ -10,10 +10,10 @@ show_help() {
     echo ""
     echo "选项："
     echo "  -a             仅显示在线的IP地址，并保存到 online_ips.txt"
-    echo "  -i INTERVAL    设置扫描间隔时间（默认为0.5秒）"
+    echo "  -i INTERVAL    设置扫描间隔时间（默认为0.1秒）"
     echo "  -p PORT        检查指定的端口（默认为80端口）"
     echo "  -t TIMEOUT     设置ping超时时间（默认为1秒，最小0.1秒）"
-    echo "  -j JOBS        设置并行进程数（默认为CPU核心数）"
+    echo "  -j JOBS        设置并行进程数（默认为10）"
     echo "  -h             显示帮助信息"
     exit 0
 }
@@ -27,10 +27,10 @@ for cmd in ping nc bc; do
 done
 
 # 默认设置
-ping_interval=0.5
+ping_interval=0.1  # 减少默认间隔
 port_to_check=80
 ping_timeout=1
-parallel_jobs=$(nproc)
+parallel_jobs=10   # 默认并行度恢复到原始值
 last_ip_file="last_scanned_ip.txt"
 last_range_file="last_scanned_range.txt"
 only_online=false
@@ -140,39 +140,42 @@ if [ -n "$last_ip" ]; then
     start_int=$(ip_to_int "$last_ip")
 fi
 
-# 分批扫描（添加进度显示）
-batch_size=100
-for ((ip_int=$start_int; ip_int<=$end_int; ip_int+=batch_size)); do
-    batch_end=$((ip_int + batch_size - 1))
-    if [ $batch_end -gt $end_int ]; then
-        batch_end=$end_int
-    fi
-
-    ip_list=()
-    for ((i=$ip_int; i<=$batch_end; i++)); do
-        ip_list+=($(int_to_ip $i))
-    done
-
-    # 并行扫描并实时记录当前扫描的 IP
-    printf "%s\n" "${ip_list[@]}" | xargs -I {} -P "$parallel_jobs" bash -c "
-        echo {} > $temp_current_ip
-        if ping -c 1 -W $ping_timeout {} >/dev/null 2>&1; then
-            if nc -z -w 1 {} $port_to_check 2>/dev/null; then
-                echo '{} is online (port $port_to_check open)' | tee -a scan.log
-                echo {} >> $temp_output
-            fi
-        fi
-    "
-
-    # 计算并显示进度
-    scanned_count=$((batch_end - start_int + 1))
-    [ $scanned_count -gt $ip_count ] && scanned_count=$ip_count  # 防止超过 100%
-    progress=$(echo "scale=2; $scanned_count * 100 / $ip_count" | bc)
-    printf "\r扫描进度: %.2f%% (%d/%d)" $progress $scanned_count $ip_count
-    sleep $ping_interval
+# 生成完整 IP 列表（一次性扫描）
+ip_list=()
+for ((i=$start_int; i<=$end_int; i++)); do
+    ip_list+=($(int_to_ip $i))
 done
 
+# 并行扫描并记录进度
+total_ips=${#ip_list[@]}
+scanned_count=0
+
+printf "%s\n" "${ip_list[@]}" | xargs -I {} -P "$parallel_jobs" bash -c "
+    # 原子更新当前扫描的 IP
+    echo {} > $temp_current_ip
+    if ping -c 1 -W $ping_timeout {} >/dev/null 2>&1; then
+        if nc -z -w 1 {} $port_to_check 2>/dev/null; then
+            echo '{} is online (port $port_to_check open)' | tee -a scan.log
+            echo {} >> $temp_output
+        fi
+    fi
+    # 简单计数（避免锁机制）
+    echo \$((scanned_count += 1)) > /tmp/scanned_count
+"
+
 wait
+
+# 获取最终扫描计数（由于并行限制，这里用文件计数替代）
+if [ -f /tmp/scanned_count ]; then
+    scanned_count=$(cat /tmp/scanned_count)
+    rm -f /tmp/scanned_count
+else
+    scanned_count=$total_ips  # 默认假设全部扫描完成
+fi
+
+progress=$(echo "scale=2; $scanned_count * 100 / $total_ips" | bc)
+printf "\r扫描进度: %.2f%% (%d/%d)\n" $progress $scanned_count $total_ips
+
 cat "$temp_output" >> "$output_file"
 rm -f "$temp_output" "$temp_current_ip"
 
@@ -183,7 +186,7 @@ seconds=$((total_time % 60))
 
 online_count=$(wc -l < "$output_file")
 
-echo -e "\n\n总共扫描了 $ip_count 个 IP 地址。"
+echo -e "\n总共扫描了 $ip_count 个 IP 地址。"
 echo -e "其中有 $online_count 个 IP 地址在线（端口 $port_to_check 开放）。"
 echo -e "扫描完成，总用时：${minutes}分钟${seconds}秒"
 
