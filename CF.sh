@@ -53,8 +53,6 @@ int_to_ip() {
     echo "$((int >> 24 & 255)).$((int >> 16 & 255)).$((int >> 8 & 255)).$((int & 255))"
 }
 
-export -f int_to_ip  # 关键：让 parallel 能使用这个函数
-
 # 处理 Ctrl+C，保存最后扫描 IP
 trap_save_last_ip() {
     echo "扫描中断，保存最后扫描的IP地址: $last_ip"
@@ -110,11 +108,15 @@ else
     exit 1
 fi
 
-# 让 `output_file` 变量可用于 `parallel`
-export output_file="online_ips.txt"
+# 创建存储在线 IP 地址的文件
+output_file="online_ips.txt"
+> "$output_file"
 
 # 记录脚本开始时间
 start_time=$(date +%s)
+
+# 统计在线 IP
+online_count=0
 
 # 开始扫描
 echo "开始扫描..."
@@ -124,21 +126,26 @@ if [ -n "$last_ip" ]; then
     start_int=$(ip_to_int "$last_ip")
 fi
 
-# 生成 IP 列表并传给 parallel 处理
-seq "$start_int" "$end_int" | parallel -j 20 --joblog parallel.log '
-    target=$(int_to_ip {})
-    echo "正在扫描: $target"  # 调试输出，看看 target 是否为空
-    if [[ -n "$target" ]]; then  # 确保 target 不是空的
-        if ping -c 1 -W 0.8 "$target" > /dev/null; then
-            echo "$target is online" | tee -a scan.log
-            echo "$target" >> "$output_file"
+for ((ip_int=$start_int; ip_int<=$end_int; ip_int++)); do
+    target=$(int_to_ip $ip_int)
+
+    # 并行扫描
+    echo "$target" | xargs -I {} -P 15 bash -c "
+        if ping -c 1 -W 0.8 {} > /dev/null; then
+            echo '{} is online' | tee -a scan.log
+            echo {} >> \"$output_file\"
+            exit 0
         fi
-    else
-        echo "错误：int_to_ip 生成了空 IP"
-    fi
-'
-# 记录最后扫描的 IP
-echo "$(int_to_ip "$end_int")" > "$last_ip_file"
+        exit 1
+    " &
+
+    # 保存最后扫描的 IP
+    last_ip=$target
+    echo $last_ip > $last_ip_file
+done
+
+# 等待所有进程完成
+wait
 
 # 记录结束时间
 end_time=$(date +%s)
