@@ -119,6 +119,8 @@ if [ -n "$port_to_check" ]; then
                 if nc -z -w 1 {} $port_to_check >/dev/null 2>&1; then
                     echo '{} is online (port $port_to_check open)' | tee -a scan.log
                     echo {} >> $temp_output
+                else
+                    echo '{} ping ok but port $port_to_check closed' >&2  # 调试信息
                 fi
             fi
         " &
