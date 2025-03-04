@@ -55,21 +55,10 @@ trap trap_save_last_ip SIGINT
 
 # 如果环境变量 SKIP_MENU 未设置，则让用户选择扫描方式
 if [ -z "$SKIP_MENU" ]; then
-    last_ip=""
-    ip_range_saved=""
-
-    if [ -f "$last_ip_file" ]; then
-        last_ip=$(cat "$last_ip_file")
-    fi
-    if [ -f "$last_range_file" ]; then
-        ip_range_saved=$(cat "$last_range_file")
-    fi
-
     echo "请选择扫描方式："
     echo "1. 扫描 list_ip.txt 的内容"
-    echo "2. 发现上次扫描记录，是否从上次停止的IP继续扫描？(y/n)"
-    read -p "请输入选项 (1/2): " choice
-
+    echo "其他：直接输入需要扫描的IP范围"
+    read -p "请输入选项 (1 或直接回车): " choice
     if [ "$choice" == "1" ]; then
         if [ -f "list_ip.txt" ]; then
             ip_list=($(cat list_ip.txt))
@@ -83,29 +72,16 @@ if [ -z "$SKIP_MENU" ]; then
             echo "错误：list_ip.txt 文件不存在！"
             exit 1
         fi
-    elif [ "$choice" == "2" ]; then
-        if [ -n "$last_ip" ] && [ -n "$ip_range_saved" ]; then
-            read -p "是否从上次停止的IP继续扫描？(y/n): " continue_choice
-            if [ "$continue_choice" == "y" ]; then
-                echo "从上次扫描的IP地址 $last_ip 继续扫描"
-                ip_range="$ip_range_saved"
-            else
-                echo "从头开始扫描"
-                last_ip=""
-                ip_range=""
-            fi
-        else
-            echo "没有找到上次扫描记录，请输入新的 IP 范围"
-            read -p "请输入需要扫描的IP范围（例如 192.168.1.0/24 或 18.163.8.12-18.163.8.100）: " ip_range
-            echo "$ip_range" > "$last_range_file"
-        fi
-    else
-        echo "输入无效，请输入需要扫描的IP范围（例如 192.168.1.0/24 或 18.163.8.12-18.163.8.100）"
-        read -p "请输入 IP 范围: " ip_range
     fi
 fi
 
-# IP 转换函数
+# 如果没有从命令行或菜单中获得 IP 范围，则提示用户输入
+if [ -z "$ip_range" ]; then
+    read -p "请输入需要扫描的IP范围（例如 192.168.1.0/24 或 18.163.8.12-18.163.8.100）: " ip_range
+    echo "$ip_range" > "$last_range_file"
+fi
+
+# IP转换函数（定义两次，以便兼容后续代码调用）
 ip_to_int() {
     local IFS=.
     local ip=($1)
@@ -117,7 +93,7 @@ int_to_ip() {
     echo "$(( (ip_int >> 24) & 255 )).$(( (ip_int >> 16) & 255 )).$(( (ip_int >> 8) & 255 )).$(( ip_int & 255 ))"
 }
 
-# 解析 IP 范围
+# 解析 IP 范围（支持 CIDR 或 IP 范围格式）
 if [[ $ip_range == */* ]]; then
     IFS='/' read -r network mask <<< "$ip_range"
     start_int=$(ip_to_int "$network")
@@ -150,21 +126,13 @@ fi
 
 for ((ip_int=$start_int; ip_int<=$end_int; ip_int++)); do
     target=$(int_to_ip $ip_int)
-
-    # 并行扫描，每个 IP 使用 xargs 执行 ping
-    echo "$target" | xargs -I {} -P 10 bash -c "
-        if ping -c 1 -W 1 {} > /dev/null; then
-            echo '{} is online' | tee -a scan.log
-            echo {} >> \"$output_file\"
-            exit 0
-        fi
-        exit 1
-    " &
-
-    # 记录最后扫描的 IP
+    
+    # 并行扫描：使用 xargs 启动 10 个并行任务，每个任务执行 ping\n    echo "$target" | xargs -I {} -P 10 bash -c \"\n        if ping -c 1 -W 1 {} > /dev/null; then\n            echo '{} is online' | tee -a scan.log\n            echo {} >> \\\"$output_file\\\"\n            exit 0\n        fi\n        exit 1\n    \" &
+    
+    # 保存最后扫描的 IP 地址
     last_ip=$target
     echo "$last_ip" > "$last_ip_file"
-
+    
     # 根据自定义间隔等待
     sleep "$ping_interval"
 done
@@ -178,7 +146,7 @@ total_time=$((end_time - start_time))
 minutes=$((total_time / 60))
 seconds=$((total_time % 60))
 
-# 统计在线 IP
+# 统计在线 IP 数量
 online_count=$(wc -l < "$output_file")
 
 echo -e "\n总共扫描了 $ip_count 个 IP 地址。"
