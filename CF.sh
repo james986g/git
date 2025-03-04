@@ -53,8 +53,9 @@ int_to_ip() {
 # 处理 Ctrl+C，保存最后扫描 IP
 trap_save_last_ip() {
     echo "扫描中断，保存最后扫描的IP地址: $last_ip"
-    echo $last_ip > $last_ip_file
-    echo $ip_range > $last_range_file
+    echo "$last_ip" > "$last_ip_file"
+    echo "$ip_range" > "$last_range_file"
+    pkill -P $$  # 终止所有子进程
     exit 1
 }
 
@@ -100,31 +101,19 @@ if [ -f "$last_ip_file" ]; then
 fi
 
 echo "开始扫描 $ip_range..."
+
 for ((ip_int=$start_int; ip_int<=$end_int; ip_int++)); do
     target=$(int_to_ip $ip_int)
 
-    if ping -c 1 -W 1 $target > /dev/null; then
-        echo "$target is online" | tee -a scan.log
-        echo "$target" >> "$output_file"
-    fi
-    
-    last_ip=$target
-    echo "$last_ip" > "$last_ip_file"
-
+    echo "$target" | xargs -I {} -P 10 bash -c "
+        if ping -c 1 -W 0.7 {} > /dev/null; then
+            echo '{} is online' | tee -a scan.log
+            echo {} >> \"$output_file\"
+            echo {} > \"$last_ip_file\"
+        fi
+    " &
 done
 
-end_time=$(date +%s)
-total_time=$((end_time - start_time))
-minutes=$((total_time / 60))
-seconds=$((total_time % 60))
-online_count=$(wc -l < "$output_file")
+wait  
 
-echo -e "\n总共扫描了 $ip_count 个 IP 地址。"
-echo -e "其中有 $online_count 个 IP 地址在线。"
-echo -e "扫描完成，总用时：${minutes}分钟${seconds}秒"
-
-if $only_online; then
-    echo "在线 IP 已保存到 $output_file"
-else
-    cat "$output_file"
-fi
+echo -e "\n扫描完成！"
