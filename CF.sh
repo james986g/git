@@ -53,6 +53,8 @@ int_to_ip() {
     echo "$((int >> 24 & 255)).$((int >> 16 & 255)).$((int >> 8 & 255)).$((int & 255))"
 }
 
+export -f int_to_ip  # 关键：让 parallel 能使用这个函数
+
 # 处理 Ctrl+C，保存最后扫描 IP
 trap_save_last_ip() {
     echo "扫描中断，保存最后扫描的IP地址: $last_ip"
@@ -123,14 +125,18 @@ if [ -n "$last_ip" ]; then
 fi
 
 # 生成 IP 列表并传给 parallel 处理
-seq "$start_int" "$end_int" | parallel -j 20 --joblog parallel.log "
-    target=\$(int_to_ip {})
-    if ping -c 1 -W 0.8 \"\$target\" > /dev/null; then
-        echo \"\$target is online\" | tee -a scan.log
-        echo \"\$target\" >> \"$output_file\"
+seq "$start_int" "$end_int" | parallel -j 20 --joblog parallel.log '
+    target=$(int_to_ip {})
+    echo "正在扫描: $target"  # 调试输出，看看 target 是否为空
+    if [[ -n "$target" ]]; then  # 确保 target 不是空的
+        if ping -c 1 -W 0.8 "$target" > /dev/null; then
+            echo "$target is online" | tee -a scan.log
+            echo "$target" >> "$output_file"
+        fi
+    else
+        echo "错误：int_to_ip 生成了空 IP"
     fi
-"
-
+'
 # 记录最后扫描的 IP
 echo "$(int_to_ip "$end_int")" > "$last_ip_file"
 
