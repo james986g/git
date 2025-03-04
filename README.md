@@ -1,4 +1,7 @@
 ```
+pkg update && pkg upgrade -y
+```
+```
 pkg install wget -y
 ```
 ```
