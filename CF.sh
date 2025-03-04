@@ -131,7 +131,7 @@ for ((ip_int=$start_int; ip_int<=$end_int; ip_int++)); do
 
     # 并行扫描
     echo "$target" | xargs -I {} -P 10 bash -c "
-        if ping -c 1 -W 0.7 {} > /dev/null; then
+        if ping -c 1 -W 1 {} > /dev/null; then
             echo '{} is online' | tee -a scan.log
             echo {} >> \"$output_file\"
             exit 0
