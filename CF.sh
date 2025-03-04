@@ -93,7 +93,7 @@ output_file="online_ips.txt"
 start_time=$(date +%s)
 
 # 并发管理
-running_jobs=0
+running_jobs=20
 
 echo "开始扫描..."
 if [ -n "$last_ip" ]; then
