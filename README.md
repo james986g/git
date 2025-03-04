@@ -8,6 +8,9 @@ pkg install wget -y
 pkg install parallel -y
 ```
 ```
+parallel --citation
+```
+```
 wget -O psh "https://raw.githubusercontent.com/james986g/git/refs/heads/main/CF.sh"
 ```
 ```
