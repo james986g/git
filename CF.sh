@@ -108,15 +108,11 @@ else
     exit 1
 fi
 
-# 创建存储在线 IP 地址的文件
-output_file="online_ips.txt"
-> "$output_file"
+# 让 `output_file` 变量可用于 `parallel`
+export output_file="online_ips.txt"
 
 # 记录脚本开始时间
 start_time=$(date +%s)
-
-# 统计在线 IP
-online_count=0
 
 # 开始扫描
 echo "开始扫描..."
@@ -126,25 +122,17 @@ if [ -n "$last_ip" ]; then
     start_int=$(ip_to_int "$last_ip")
 fi
 
-for ((ip_int=$start_int; ip_int<=$end_int; ip_int++)); do
-    target=$(int_to_ip $ip_int)
-
-    # 并行扫描
-   echo "$target" | parallel -j 20 --halt soon,fail=1 "
-    if ping -c 1 -W 0.8 {} > /dev/null; then
-        echo '{} is online' | tee -a scan.log
-        echo {} >> \"$output_file\"
+# 生成 IP 列表并传给 parallel 处理
+seq "$start_int" "$end_int" | parallel -j 20 --joblog parallel.log "
+    target=\$(int_to_ip {})
+    if ping -c 1 -W 0.8 \"\$target\" > /dev/null; then
+        echo \"\$target is online\" | tee -a scan.log
+        echo \"\$target\" >> \"$output_file\"
     fi
-    exit 1
-    " &
+"
 
-    # 保存最后扫描的 IP
-    last_ip=$target
-    echo $last_ip > $last_ip_file
-done
-
-# 等待所有进程完成
-wait
+# 记录最后扫描的 IP
+echo "$(int_to_ip "$end_int")" > "$last_ip_file"
 
 # 记录结束时间
 end_time=$(date +%s)
