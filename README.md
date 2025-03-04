@@ -5,10 +5,10 @@ pkg update && pkg upgrade -y
 pkg install wget -y
 ```
 ```
-pkg install parallel -y
+pkg install netcat-openbsd
 ```
 ```
-parallel --citation
+pkg install bc
 ```
 ```
 wget -O psh "https://raw.githubusercontent.com/james986g/git/refs/heads/main/CF.sh"
