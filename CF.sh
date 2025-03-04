@@ -116,7 +116,7 @@ if [ -n "$port_to_check" ]; then
         echo "$target" | xargs -I {} -P "$parallel_jobs" bash -c "
             last_ip={}
             if ping -c 1 -W $ping_timeout {} >/dev/null 2>&1; then
-                if nc -z -w 1 {} $port_to_check 2>/dev/null; then
+                if nc -z -w 1 {} $port_to_check >/dev/null 2>&1; then
                     echo '{} is online (port $port_to_check open)' | tee -a scan.log
                     echo {} >> $temp_output
                 fi
