@@ -2,10 +2,13 @@
 pkg install wget -y
 ```
 ```
-wget -O sh "https://raw.githubusercontent.com/james986g/git/refs/heads/main/CF.sh"
+pkg install parallel -y
 ```
 ```
-chmod +x sh
+wget -O psh "https://raw.githubusercontent.com/james986g/git/refs/heads/main/CF.sh"
+```
+```
+chmod +x psh
 ```
 ```
 ./psh
