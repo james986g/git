@@ -116,13 +116,13 @@ if [ -n "$port_to_check" ]; then
         echo "$target" | xargs -I {} -P "$parallel_jobs" bash -c "
             last_ip={}
             if ping -c 1 -W $ping_timeout {} >/dev/null 2>&1; then
-                if nc -z -w 0.5 {} $port_to_check 2>/dev/null; then
+                if nc -z -w 1 {} $port_to_check 2>/dev/null; then
                     echo '{} is online (port $port_to_check open)' | tee -a scan.log
                     echo {} >> $temp_output
                 fi
             fi
         " &
-        last_ip=$target  # 更新最后扫描的 IP
+        last_ip=$target
     done
 else
     for ((ip_int=$start_int; ip_int<=$end_int; ip_int++)); do
@@ -134,7 +134,7 @@ else
                 echo {} >> $temp_output
             fi
         " &
-        last_ip=$target  # 更新最后扫描的 IP
+        last_ip=$target
     done
 fi
 
