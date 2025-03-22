@@ -2,14 +2,57 @@
 
 # 帮助文档
 show_help() {
-    echo "用法: $0 [IP范围] [-a] [-p PORT] [-t TIMEOUT] [-j JOBS] [-h]"
+    echo "用法: $0 [IP范围] [-a] [-p] [-t] [-j] [-u] [-h]"
     echo "IP范围格式: 192.168.1.0/24 或 192.168.1.10-192.168.1.100"
     echo "选项:"
-    echo "  -a          仅显示在线IP并保存到 online_ips.txt"
-    echo "  -p PORT     检查指定端口（默认只用ping）"
-    echo "  -t TIMEOUT  设置ping超时（默认1秒）"
-    echo "  -j JOBS     设置并行进程数（默认10）"
-    echo "  -h          显示帮助"
+    echo "  -a      仅显示在线IP并保存到 online_ips.txt"
+    echo "  -p      检查指定端口（默认只用80）"
+    echo "  -t      设置ping超时（默认1秒）"
+    echo "  -j      设置并行进程数（默认6）"
+    echo "  -u      卸载脚本、相关文件及依赖（保留scan.log）"
+    echo "  -h      显示帮助"
+    exit 0
+}
+
+# 卸载函数
+uninstall_script() {
+    echo "开始卸载脚本、相关文件及依赖..."
+    script_path=$(realpath "$0")
+    files_to_remove=(
+        "last_scanned_ip.txt"
+        "last_scanned_range.txt"
+        "online_ips.txt"
+    )
+    
+    # 删除生成的文件
+    for file in "${files_to_remove[@]}"; do
+        if [ -f "$file" ]; then
+            rm -f "$file"
+            echo "已删除: $file"
+        fi
+    done
+    
+    # 检测包管理器并卸载依赖
+    if command -v apt >/dev/null 2>&1; then
+        echo "检测到 apt 包管理器，尝试卸载依赖..."
+        sudo apt remove -y iputils-ping netcat-openbsd
+        sudo apt autoremove -y
+        echo "依赖已卸载（iputils-ping 和 netcat-openbsd）"
+    elif command -v yum >/dev/null 2>&1; then
+        echo "检测到 yum 包管理器，尝试卸载依赖..."
+        sudo yum remove -y iputils nc
+        echo "依赖已卸载（iputils 和 nc）"
+    else
+        echo "警告：未检测到支持的包管理器（apt/yum），请手动卸载 ping 和 nc"
+    fi
+    
+    # 删除脚本本身
+    if [ -f "$script_path" ]; then
+        rm -f "$script_path"
+        echo "已删除脚本本身: $script_path"
+    fi
+    
+    echo "卸载完成（scan.log 已保留）"
     exit 0
 }
 
@@ -24,12 +67,13 @@ output_file="online_ips.txt"
 temp_output=$(mktemp)
 
 # 解析参数
-while getopts "ap:t:j:h" opt; do
+while getopts "ap:t:j:uh" opt; do
     case $opt in
         a) only_online=true ;;
         p) port_to_check=$OPTARG ;;
         t) ping_timeout=$OPTARG ;;
         j) parallel_jobs=$OPTARG ;;
+        u) uninstall_script ;;
         h) show_help ;;
         *) show_help ;;
     esac
@@ -39,11 +83,27 @@ shift $((OPTIND-1))
 # 检查工具
 if ! command -v ping &>/dev/null; then
     echo "错误：需要安装 ping"
-    exit 1
+    if command -v apt >/dev/null 2>&1; then
+        echo "尝试使用 apt 安装 iputils-ping..."
+        sudo apt update && sudo apt install -y iputils-ping
+    elif command -v yum >/dev/null 2>&1; then
+        echo "尝试使用 yum 安装 iputils..."
+        sudo yum install -y iputils
+    else
+        echo "请手动安装 ping"
+        exit 1
+    fi
 fi
 if [ -n "$port_to_check" ] && ! command -v nc &>/dev/null; then
-    echo "警告：未安装 nc，忽略端口检查"
-    port_to_check=""
+    echo "警告：未安装 nc，尝试安装..."
+    if command -v apt >/dev/null 2>&1; then
+        sudo apt install -y netcat-openbsd
+    elif command -v yum >/dev/null 2>&1; then
+        sudo yum install -y nc
+    else
+        echo "请手动安装 nc 以启用端口检查"
+        port_to_check=""
+    fi
 fi
 
 # IP 转换函数
