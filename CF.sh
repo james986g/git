@@ -1,8 +1,5 @@
 #!/bin/bash
 
-# 设置文件描述符上限
-ulimit -n 4096
-
 # 帮助文档
 show_help() {
     echo "用法: $0 [IP范围] [-a] [-p PORT] [-t TIMEOUT] [-j JOBS] [-h]"
@@ -11,19 +8,20 @@ show_help() {
     echo "  -a          仅显示在线IP并保存到 online_ips.txt"
     echo "  -p PORT     检查指定端口（默认只用ping）"
     echo "  -t TIMEOUT  设置ping超时（默认1秒）"
-    echo "  -j JOBS     设置并行进程数（默认10，最大50）"
+    echo "  -j JOBS     设置并行进程数（默认10）"
     echo "  -h          显示帮助"
     exit 0
 }
 
 # 默认设置
-port_to_check=""
+port_to_check="80"
 ping_timeout=1
-parallel_jobs=10
+parallel_jobs=6
 only_online=false
 last_ip_file="last_scanned_ip.txt"
 last_range_file="last_scanned_range.txt"
 output_file="online_ips.txt"
+temp_output=$(mktemp)
 
 # 解析参数
 while getopts "ap:t:j:h" opt; do
@@ -37,12 +35,6 @@ while getopts "ap:t:j:h" opt; do
     esac
 done
 shift $((OPTIND-1))
-
-# 限制并行进程数
-if [ "$parallel_jobs" -gt 50 ]; then
-    echo "警告：并行进程数过高，限制为 50"
-    parallel_jobs=50
-fi
 
 # 检查工具
 if ! command -v ping &>/dev/null; then
@@ -71,8 +63,8 @@ trap_save_last_ip() {
     echo "扫描中断，保存最后扫描IP: $last_ip"
     echo "$last_ip" > "$last_ip_file"
     echo "$ip_range" > "$last_range_file"
-    cat "${temp_files[@]}" >> "$output_file" 2>/dev/null
-    rm -f "${temp_files[@]}" 2>/dev/null
+    cat "$temp_output" >> "$output_file"
+    rm -f "$temp_output"
     exit 1
 }
 
@@ -118,34 +110,40 @@ start_time=$(date +%s)
 echo "开始扫描（并行数: $parallel_jobs）..."
 
 # 生成并扫描 IP
-temp_files=()
-for ((ip_int=$start_int; ip_int<=$end_int; ip_int++)); do
-    target=$(int_to_ip $ip_int)
-    last_ip=$target  # 主线程更新 last_ip
-    temp_file=$(mktemp)
-    temp_files+=("$temp_file")
-    if [ -n "$port_to_check" ]; then
+if [ -n "$port_to_check" ]; then
+    for ((ip_int=$start_int; ip_int<=$end_int; ip_int++)); do
+        target=$(int_to_ip $ip_int)
         echo "$target" | xargs -I {} -P "$parallel_jobs" bash -c "
+            last_ip={}
             if ping -c 1 -W $ping_timeout {} >/dev/null 2>&1; then
                 if nc -z -w 1 {} $port_to_check >/dev/null 2>&1; then
                     echo '{} is online (port $port_to_check open)' | tee -a scan.log
-                    echo {} >> $temp_file
+                    echo {} >> $temp_output
+                else
+                    echo '{} ping ok but port $port_to_check closed' >&2  # 调试信息
                 fi
             fi
         " &
-    else
+        last_ip=$target
+    done
+else
+    for ((ip_int=$start_int; ip_int<=$end_int; ip_int++)); do
+        target=$(int_to_ip $ip_int)
         echo "$target" | xargs -I {} -P "$parallel_jobs" bash -c "
+            last_ip={}
             if ping -c 1 -W $ping_timeout {} >/dev/null 2>&1; then
                 echo '{} is online' | tee -a scan.log
-                echo {} >> $temp_file
+                echo {} >> $temp_output
             fi
         " &
-    fi
-done
+        last_ip=$target
+    done
+fi
+
 wait
 
-cat "${temp_files[@]}" >> "$output_file" 2>/dev/null
-rm -f "${temp_files[@]}" 2>/dev/null
+cat "$temp_output" >> "$output_file"
+rm -f "$temp_output"
 
 end_time=$(date +%s)
 total_time=$((end_time - start_time))
